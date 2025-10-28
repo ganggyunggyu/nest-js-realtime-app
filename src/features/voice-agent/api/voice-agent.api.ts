@@ -1,5 +1,6 @@
-import { RealtimeAgent, RealtimeSession } from "@openai/agents/realtime";
-import type { ConnectPayload } from "@/entities/session/session.types";
+import { RealtimeAgent, RealtimeSession } from '@openai/agents/realtime';
+import type { ConnectPayload } from '@/entities/session/session.types';
+import { SARADORENG_SYSTEM_PROMPT } from '../../../../entities/agent/roles/saradoreng';
 
 interface RealtimeConnectResult {
   agent: RealtimeAgent;
@@ -7,24 +8,24 @@ interface RealtimeConnectResult {
   clientSecret: string;
 }
 
-const connectEndpoint = "/api/realtime/client-secret";
+const connectEndpoint = '/api/realtime/client-secret';
 
 const postClientSecret = async (payload: ConnectPayload) => {
   const response = await fetch(connectEndpoint, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    let errorDetail = "Failed to issue realtime client secret";
+    let errorDetail = 'Failed to issue realtime client secret';
     try {
       const errorJson = await response.json();
-      if (typeof errorJson?.message === "string") {
+      if (typeof errorJson?.message === 'string') {
         errorDetail = `${errorDetail}: ${errorJson.message}`;
-        if (typeof errorJson?.detail === "string") {
+        if (typeof errorJson?.detail === 'string') {
           errorDetail = `${errorDetail} (${errorJson.detail})`;
         }
       } else {
@@ -44,17 +45,25 @@ const postClientSecret = async (payload: ConnectPayload) => {
 };
 
 export const createRealtimeSession = async (
-  payload: ConnectPayload,
+  payload: ConnectPayload
 ): Promise<RealtimeConnectResult> => {
   const clientSecret = await postClientSecret(payload);
 
+  const combinedInstructions = [
+    SARADORENG_SYSTEM_PROMPT,
+    payload.instructions.headline,
+    payload.instructions.details,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
   const agent = new RealtimeAgent({
-    name: payload.instructions.headline,
-    instructions: `${payload.instructions.headline}\n${payload.instructions.details}`,
+    name: '사라도령',
+    instructions: combinedInstructions,
   });
 
   const session = new RealtimeSession(agent, {
-    transport: payload.mode === "text" ? "websocket" : "webrtc",
+    transport: payload.mode === 'text' ? 'websocket' : 'webrtc',
   });
 
   await session.connect({

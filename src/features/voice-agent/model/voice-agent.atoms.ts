@@ -3,7 +3,7 @@ import type {
   RealtimeAgent,
   RealtimeSession,
 } from "@openai/agents/realtime";
-import type { RealtimeMode } from "@/entities/session/session.types";
+import type { ConnectPayload, RealtimeMode } from "@/entities/session/session.types";
 
 export interface ConversationMessage {
   id: string;
@@ -29,3 +29,6 @@ export const voiceAgentSessionAtom = atom<RealtimeSession | null>(null);
 export const voiceAgentConversationAtom = atom<ConversationMessage[]>([]);
 export const voiceAgentModeAtom = atom<RealtimeMode>("voice");
 export const voiceAgentResponsePendingAtom = atom(false);
+export const voiceAgentSessionIdAtom = atom<string | null>(null);
+export const voiceAgentLastPayloadAtom = atom<ConnectPayload | null>(null);
+export const voiceAgentApiKeyAtom = atom<string>("");

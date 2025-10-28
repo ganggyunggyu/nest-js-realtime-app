@@ -44,6 +44,10 @@ export const VoiceAgentConsole = () => {
     sendMessage,
     isPending,
     responsePending,
+    sessionId,
+    apiKey,
+    updateApiKey,
+    resetSession,
   } = useRealtimeAgentConnection();
 
   const [headline, setHeadline] = React.useState("Realtime Agent Assistant");
@@ -55,12 +59,30 @@ export const VoiceAgentConsole = () => {
   const [chatDraft, setChatDraft] = React.useState("");
   const conversationContainerRef = React.useRef<HTMLDivElement | null>(null);
   const logContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const [apiKeyDraft, setApiKeyDraft] = React.useState(apiKey);
+  const [apiKeyVisible, setApiKeyVisible] = React.useState(false);
 
   const canSendChat =
-    status === "connected" &&
     chatDraft.trim().length > 0 &&
     mode === "text" &&
-    !responsePending;
+    !responsePending &&
+    !isPending;
+
+  React.useEffect(() => {
+    setApiKeyDraft(apiKey);
+  }, [apiKey]);
+
+  const handleApiKeyChange = React.useCallback(
+    (value: string) => {
+      setApiKeyDraft(value);
+      updateApiKey(value);
+    },
+    [updateApiKey],
+  );
+
+  const handleManualReset = React.useCallback(() => {
+    void resetSession(true);
+  }, [resetSession]);
 
   const handleConnect = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -149,6 +171,57 @@ export const VoiceAgentConsole = () => {
             voice or text transport pathways directly in the browser.
           </p>
         </header>
+
+        <div
+          className={cn(
+            "flex w-full flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-6",
+            "dark:border-zinc-800 dark:bg-zinc-900",
+          )}
+        >
+          <div className={cn("flex items-center justify-between")}
+            aria-live="polite"
+          >
+            <span
+              className={cn(
+                "text-sm font-semibold text-zinc-700",
+                "dark:text-zinc-200",
+              )}
+            >
+              OpenAI API Key
+            </span>
+            <button
+              type="button"
+              onClick={() => setApiKeyVisible((prev) => !prev)}
+              className={cn(
+                "text-xs font-medium text-zinc-600 underline transition hover:text-zinc-900",
+                "dark:text-zinc-400 dark:hover:text-zinc-200",
+              )}
+            >
+              {apiKeyVisible ? "Hide" : "Show"}
+            </button>
+          </div>
+          <input
+            value={apiKeyDraft}
+            onChange={(event) => handleApiKeyChange(event.target.value)}
+            type={apiKeyVisible ? "text" : "password"}
+            placeholder="Optional client key (starts with sk-...)"
+            className={cn(
+              "w-full rounded-lg border border-zinc-200 bg-white px-4 py-3",
+              "text-sm text-zinc-900 outline-none transition",
+              "focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10",
+              "dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50",
+              "dark:focus:border-zinc-200 dark:focus:ring-zinc-200/20",
+            )}
+          />
+          <span
+            className={cn(
+              "text-xs text-zinc-500",
+              "dark:text-zinc-400",
+            )}
+          >
+            Stored locally for this browser. Leave empty to fall back to the server key.
+          </span>
+        </div>
 
         <form
           onSubmit={handleConnect}
@@ -304,7 +377,35 @@ export const VoiceAgentConsole = () => {
                     {status}
                   </span>
                 </div>
-                <div className={cn("flex gap-2")}>
+                <div
+                  className={cn("flex flex-col items-end gap-1")}
+                  aria-live="polite"
+                >
+                  {sessionId && (
+                    <span
+                      className={cn(
+                        "text-xs font-mono text-zinc-500",
+                        "dark:text-zinc-400",
+                      )}
+                    >
+                      Session: {sessionId}
+                    </span>
+                  )}
+                  {mode === "text" && responsePending && (
+                    <span
+                      className={cn(
+                        "text-xs font-medium uppercase tracking-wide text-amber-500",
+                        "dark:text-amber-300",
+                      )}
+                    >
+                      Responding…
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className={cn("flex flex-wrap gap-2")}
+                aria-live="polite"
+              >
                   <button
                     type="submit"
                     disabled={isPending || status === "connected"}
@@ -332,6 +433,21 @@ export const VoiceAgentConsole = () => {
                   >
                     Disconnect
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleManualReset}
+                    disabled={isPending}
+                    className={cn(
+                      "rounded-lg border border-amber-400 px-4 py-2 text-sm font-semibold text-amber-700 transition",
+                      "hover:border-amber-500 hover:text-amber-800",
+                      "disabled:cursor-not-allowed disabled:border-amber-200 disabled:text-amber-300",
+                      "dark:border-amber-500 dark:text-amber-300",
+                      "dark:hover:border-amber-400 dark:hover:text-amber-200",
+                      "dark:disabled:border-amber-200 dark:disabled:text-amber-200",
+                    )}
+                  >
+                    Reset
+                  </button>
                 </div>
               </div>
             </div>
@@ -348,18 +464,20 @@ export const VoiceAgentConsole = () => {
           >
             <input
               value={chatDraft}
-            onChange={(event) => setChatDraft(event.target.value)}
+              onChange={(event) => setChatDraft(event.target.value)}
               placeholder={
-                status === "connected"
-                  ? "Ask something and press Enter to send."
-                  : "Connect the session to start chatting."
+                responsePending
+                  ? "Assistant is responding… waiting to finish this turn."
+                  : status === "connecting"
+                  ? "Connecting… please wait."
+                  : "Ask something and press Enter to send."
               }
               className={cn(
                 "flex-1 rounded-md border border-transparent bg-transparent px-3 py-2 text-sm outline-none transition",
                 "focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400/40",
                 "dark:focus:border-zinc-500 dark:focus:ring-zinc-500/40",
               )}
-              disabled={status !== "connected"}
+              disabled={responsePending || isPending}
             />
             <button
               type="submit"

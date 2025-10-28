@@ -1,33 +1,38 @@
-import React from "react";
-import { useMutation } from "@tanstack/react-query";
-import { useAtom } from "jotai";
-import type { RealtimeItem } from "@openai/agents/realtime";
+import React from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useAtom } from 'jotai';
+import type { RealtimeItem, RealtimeSession } from '@openai/agents/realtime';
 import type {
   ConnectPayload,
   RealtimeMode,
-} from "@/entities/session/session.types";
+} from '@/entities/session/session.types';
 import {
   voiceAgentAgentAtom,
   voiceAgentConversationAtom,
   voiceAgentModeAtom,
+  voiceAgentSessionIdAtom,
   voiceAgentLogsAtom,
   voiceAgentSessionAtom,
   voiceAgentStatusAtom,
   voiceAgentResponsePendingAtom,
+  voiceAgentLastPayloadAtom,
+  voiceAgentApiKeyAtom,
   type LogEntry,
   type LogSeverity,
   type ConversationMessage,
-} from "@/features/voice-agent/model/voice-agent.atoms";
-import { createRealtimeSession } from "@/features/voice-agent/api/voice-agent.api";
+} from '@/features/voice-agent/model/voice-agent.atoms';
+import { createRealtimeSession } from '@/features/voice-agent/api/voice-agent.api';
 
 const MAX_LOG_LENGTH = 30;
 
 const clampLogs = (logs: LogEntry[]) =>
-  logs.length > MAX_LOG_LENGTH ? logs.slice(logs.length - MAX_LOG_LENGTH) : logs;
+  logs.length > MAX_LOG_LENGTH
+    ? logs.slice(logs.length - MAX_LOG_LENGTH)
+    : logs;
 
 const createLogEntry = (
   message: string,
-  severity: LogSeverity = "info",
+  severity: LogSeverity = 'info'
 ): LogEntry => ({
   id: `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
   message,
@@ -35,18 +40,18 @@ const createLogEntry = (
 });
 
 const resolveMessageText = (item: RealtimeItem): ConversationMessage | null => {
-  if (item.type !== "message") {
+  if (item.type !== 'message') {
     return null;
   }
 
   const textSegments = item.content
     .map((content) => {
-      if (content.type === "input_text" || content.type === "output_text") {
+      if (content.type === 'input_text' || content.type === 'output_text') {
         return content.text;
       }
 
       if (
-        (content.type === "input_audio" || content.type === "output_audio") &&
+        (content.type === 'input_audio' || content.type === 'output_audio') &&
         content.transcript
       ) {
         return content.transcript;
@@ -59,8 +64,8 @@ const resolveMessageText = (item: RealtimeItem): ConversationMessage | null => {
   return {
     id: item.itemId,
     role: item.role,
-    text: textSegments.join(" ").trim(),
-    status: item.status ?? "completed",
+    text: textSegments.join(' ').trim(),
+    status: item.status ?? 'completed',
   };
 };
 
@@ -72,13 +77,36 @@ export const useRealtimeAgentConnection = () => {
   const [conversation, setConversation] = useAtom(voiceAgentConversationAtom);
   const [mode, setMode] = useAtom(voiceAgentModeAtom);
   const [responsePending, setResponsePending] = useAtom(
-    voiceAgentResponsePendingAtom,
+    voiceAgentResponsePendingAtom
   );
-  const [responsePending, setResponsePending] = useAtom(
-    voiceAgentResponsePendingAtom,
-  );
+  const [sessionId, setSessionId] = useAtom(voiceAgentSessionIdAtom);
+  const [lastPayload, setLastPayload] = useAtom(voiceAgentLastPayloadAtom);
+  const [apiKey, setApiKey] = useAtom(voiceAgentApiKeyAtom);
+
   const eventCleanupRef = React.useRef<(() => void) | null>(null);
   const assistantBufferRef = React.useRef<Map<string, string>>(new Map());
+  const responseTimeoutRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const savedKey = window.localStorage.getItem('voice-agent-openai-key');
+    if (savedKey) {
+      setApiKey(savedKey);
+    }
+  }, [setApiKey]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (apiKey) {
+      window.localStorage.setItem('voice-agent-openai-key', apiKey);
+    } else {
+      window.localStorage.removeItem('voice-agent-openai-key');
+    }
+  }, [apiKey]);
 
   const cleanupSessionListeners = React.useCallback(() => {
     if (eventCleanupRef.current) {
@@ -89,13 +117,13 @@ export const useRealtimeAgentConnection = () => {
 
   const upsertConversationMessage = React.useCallback(
     (message: ConversationMessage) => {
-      if (!message.text && message.role === "assistant") {
+      if (!message.text && message.role === 'assistant') {
         return;
       }
 
       setConversation((currentMessages) => {
         const existingIndex = currentMessages.findIndex(
-          (entry) => entry.id === message.id,
+          (entry) => entry.id === message.id
         );
 
         if (existingIndex !== -1) {
@@ -110,25 +138,27 @@ export const useRealtimeAgentConnection = () => {
         return [...currentMessages, message];
       });
     },
-    [setConversation],
+    [setConversation]
   );
 
   const appendLog = React.useCallback(
-    (entry: string, severity: LogSeverity = "info") => {
+    (entry: string, severity: LogSeverity = 'info') => {
       setLogs((currentLogs) =>
-        clampLogs([...currentLogs, createLogEntry(entry, severity)]),
+        clampLogs([...currentLogs, createLogEntry(entry, severity)])
       );
     },
-    [setLogs],
+    [setLogs]
   );
 
   const mutation = useMutation({
     mutationFn: async (payload: ConnectPayload) => {
-      setStatus("connecting");
+      setStatus('connecting');
       setConversation([]);
       appendLog(
-        `Attempting ${payload.mode === "voice" ? "voice" : "text"} session connection…`,
-        "info",
+        `Attempting ${
+          payload.mode === 'voice' ? 'voice' : 'text'
+        } session connection…`,
+        'info'
       );
 
       return createRealtimeSession(payload);
@@ -137,7 +167,10 @@ export const useRealtimeAgentConnection = () => {
       cleanupSessionListeners();
 
       assistantBufferRef.current.clear();
-      setMode(variables?.mode ?? "voice");
+      setMode(variables?.mode ?? 'voice');
+      if (variables) {
+        setLastPayload(variables);
+      }
 
       const handleHistoryUpdated = (history: RealtimeItem[]) => {
         history.forEach((item) => {
@@ -155,52 +188,67 @@ export const useRealtimeAgentConnection = () => {
         }
       };
 
-      const handleTransportEvent = (event: { type: string; [key: string]: any }) => {
-        if (event.type === "response.created") {
+      const handleTransportEvent = (event: {
+        type: string;
+        [key: string]: any;
+      }) => {
+        if (
+          event.type === 'session.created' &&
+          typeof event.session?.id === 'string'
+        ) {
+          setSessionId(event.session.id);
+        }
+
+        if (event.type === 'response.created') {
           setResponsePending(true);
         }
 
-        if (event.type === "response.output_text.delta") {
+        if (event.type === 'response.output_text.delta') {
+          setResponsePending(true);
+
           const itemId =
             event.item_id ??
-            `${event.response_id ?? "response"}:${event.output_index ?? 0}:${
+            `${event.response_id ?? 'response'}:${event.output_index ?? 0}:${
               event.content_index ?? 0
             }`;
-          const currentText = assistantBufferRef.current.get(itemId) ?? "";
-          const nextText = `${currentText}${event.delta ?? ""}`;
+          const currentText = assistantBufferRef.current.get(itemId) ?? '';
+          const nextText = `${currentText}${event.delta ?? ''}`;
           assistantBufferRef.current.set(itemId, nextText);
           upsertConversationMessage({
             id: itemId,
-            role: "assistant",
+            role: 'assistant',
             text: nextText.trim(),
-            status: "in_progress",
+            status: 'in_progress',
           });
         }
 
         if (
-          event.type === "response.output_text.done" ||
-          event.type === "response.completed" ||
-          event.type === "response.done" ||
-          event.type === "response.failed" ||
-          event.type === "response.cancelled"
+          event.type === 'response.output_text.done' ||
+          event.type === 'response.completed' ||
+          event.type === 'response.done' ||
+          event.type === 'response.failed' ||
+          event.type === 'response.cancelled'
         ) {
           const itemId =
             event.item_id ??
-            `${event.response_id ?? "response"}:${event.output_index ?? 0}:${
+            `${event.response_id ?? 'response'}:${event.output_index ?? 0}:${
               event.content_index ?? 0
             }`;
-          const finalText = assistantBufferRef.current.get(itemId) ?? "";
+          const finalText = assistantBufferRef.current.get(itemId) ?? '';
 
           if (finalText.trim().length > 0) {
             upsertConversationMessage({
               id: itemId,
-              role: "assistant",
+              role: 'assistant',
               text: finalText.trim(),
-              status: "completed",
+              status: 'completed',
             });
             appendLog(
-              `Assistant responded with ${Math.min(finalText.trim().length, 40)} characters.`,
-              "success",
+              `Assistant responded with ${Math.min(
+                finalText.trim().length,
+                40
+              )} characters.`,
+              'success'
             );
           }
 
@@ -210,14 +258,14 @@ export const useRealtimeAgentConnection = () => {
 
       const handleError = (error: { error: unknown }) => {
         const isTransportDisconnect =
-          typeof error?.error === "object" &&
+          typeof error?.error === 'object' &&
           error?.error !== null &&
-          "type" in (error.error as Record<string, unknown>) &&
-          (error.error as { type?: string }).type === "disconnect";
+          'type' in (error.error as Record<string, unknown>) &&
+          (error.error as { type?: string }).type === 'disconnect';
 
         if (isTransportDisconnect) {
-          appendLog("Realtime transport disconnected.", "warning");
-          setStatus("idle");
+          appendLog('Realtime transport disconnected.', 'warning');
+          setStatus('idle');
           cleanupSessionListeners();
           setSession(null);
           setResponsePending(false);
@@ -225,34 +273,34 @@ export const useRealtimeAgentConnection = () => {
         }
 
         if (error?.error instanceof Error) {
-          appendLog(`Session error: ${error.error.message}`, "error");
-          setStatus("error");
+          appendLog(`Session error: ${error.error.message}`, 'error');
+          setStatus('error');
           setResponsePending(false);
           return;
         }
 
         appendLog(
           `Session warning: ${JSON.stringify(error.error, null, 2)}`,
-          "warning",
+          'warning'
         );
       };
 
-      newSession.on("history_updated", handleHistoryUpdated);
-      newSession.on("error", handleError);
-      newSession.on("history_added", handleHistoryAdded);
-      newSession.on("transport_event", handleTransportEvent);
+      newSession.on('history_updated', handleHistoryUpdated);
+      newSession.on('error', handleError);
+      newSession.on('history_added', handleHistoryAdded);
+      newSession.on('transport_event', handleTransportEvent);
 
       eventCleanupRef.current = () => {
-        newSession.off("history_updated", handleHistoryUpdated);
-        newSession.off("error", handleError);
-        newSession.off("history_added", handleHistoryAdded);
-        newSession.off("transport_event", handleTransportEvent);
+        newSession.off('history_updated', handleHistoryUpdated);
+        newSession.off('error', handleError);
+        newSession.off('history_added', handleHistoryAdded);
+        newSession.off('transport_event', handleTransportEvent);
       };
 
-      setStatus("connected");
+      setStatus('connected');
       setAgent(agent);
       setSession(newSession);
-      appendLog("Realtime session connected.", "success");
+      appendLog('Realtime session connected.', 'success');
       newSession.history.forEach((item) => {
         const message = resolveMessageText(item);
         if (message) {
@@ -260,99 +308,240 @@ export const useRealtimeAgentConnection = () => {
         }
       });
       setResponsePending(false);
+      setSessionId(null);
     },
     onError: (error) => {
-      setStatus("error");
-      appendLog(`Connection failed: ${(error as Error).message}`, "error");
+      setStatus('error');
+      appendLog(`Connection failed: ${(error as Error).message}`, 'error');
       setResponsePending(false);
+      setSessionId(null);
     },
   });
 
   const handleConnect = React.useCallback(
     async (payload: ConnectPayload) => {
-      if (status === "connected") {
-        appendLog("Session already active.", "warning");
+      if (status === 'connected') {
+        appendLog('Session already active.', 'warning');
         return;
       }
 
-      await mutation.mutateAsync(payload);
+      const payloadWithKey: ConnectPayload = {
+        ...payload,
+        apiKey: apiKey ? apiKey : undefined,
+      };
+
+      setLastPayload(payloadWithKey);
+      await mutation.mutateAsync(payloadWithKey);
     },
-    [appendLog, mutation, status],
+    [apiKey, appendLog, mutation, setLastPayload, status]
   );
 
   const handleDisconnect = React.useCallback(() => {
     if (!session) {
-      appendLog("No active session to disconnect.", "warning");
+      appendLog('No active session to disconnect.', 'warning');
       return;
     }
 
     cleanupSessionListeners();
     session.close();
     setSession(null);
-    setStatus("idle");
+    setStatus('idle');
     setConversation([]);
     assistantBufferRef.current.clear();
     setResponsePending(false);
-    appendLog("Realtime session disconnected.", "info");
-  }, [appendLog, cleanupSessionListeners, session, setConversation, setResponsePending, setSession, setStatus]);
+    setSessionId(null);
+    appendLog('Realtime session disconnected.', 'info');
+  }, [
+    appendLog,
+    cleanupSessionListeners,
+    session,
+    setConversation,
+    setResponsePending,
+    setSession,
+    setSessionId,
+    setStatus,
+  ]);
 
-  const handleSendMessage = React.useCallback(
-    (message: string) => {
-      if (!session) {
-        appendLog("Cannot send message without an active session.", "warning");
+  const handleResetSession = React.useCallback(
+    async (autoReconnect = false) => {
+      if (mutation.isPending) {
+        appendLog('Cannot reset while connection is pending.', 'warning');
         return;
       }
 
-      const trimmedMessage = message.trim();
-      if (!trimmedMessage) {
-        appendLog("Cannot send empty message.", "warning");
-        return;
+      cleanupSessionListeners();
+
+      if (session) {
+        session.close();
       }
 
-       if (mode === "text" && responsePending) {
-        appendLog(
-          "Assistant is still responding. Wait for the current turn to complete before sending another prompt.",
-          "warning",
-        );
-        return;
-      }
+      setSession(null);
+      setStatus('idle');
+      setConversation([]);
+      assistantBufferRef.current.clear();
+      setResponsePending(false);
+      setSessionId(null);
 
-      if (mode === "text" && responsePending) {
-        appendLog(
-          "Assistant is still responding. Wait for the current turn to finish before sending another prompt.",
-          "warning",
-        );
-        return;
-      }
+      appendLog(
+        autoReconnect
+          ? 'Session reset requested. Attempting to reconnect...'
+          : 'Session has been reset.',
+        'warning'
+      );
 
-      session.sendMessage({
-        type: "message",
-        role: "user",
+      if (autoReconnect && lastPayload) {
+        try {
+          await mutation.mutateAsync(lastPayload);
+        } catch (error) {
+          appendLog(
+            `Auto-reconnect failed: ${(error as Error).message}`,
+            'error'
+          );
+        }
+      }
+    },
+    [
+      appendLog,
+      cleanupSessionListeners,
+      lastPayload,
+      mutation,
+      session,
+      setConversation,
+      setResponsePending,
+      setSession,
+      setSessionId,
+      setStatus,
+    ]
+  );
+
+  const safeSendMessage = React.useCallback(
+    (activeSession: RealtimeSession, text: string) => {
+      activeSession.sendMessage({
+        type: 'message',
+        role: 'user',
         content: [
           {
-            type: "input_text",
-            text: trimmedMessage,
+            type: 'input_text',
+            text,
           },
         ],
       });
       appendLog(
-        `Sent text input: “${trimmedMessage.slice(0, 60)}${
-          trimmedMessage.length > 60 ? "…" : ""
+        `Sent text input: “${text.slice(0, 60)}${
+          text.length > 60 ? '…' : ''
         }”`,
-        "info",
+        'info'
       );
-      if (mode === "text") {
+      if (mode === 'text') {
         setResponsePending(true);
       }
     },
-    [appendLog, mode, responsePending, session, setResponsePending],
+    [appendLog, mode, setResponsePending]
   );
+
+  const handleUpdateApiKey = React.useCallback(
+    (value: string) => {
+      setApiKey(value);
+      setLastPayload((current) =>
+        current ? { ...current, apiKey: value ? value : undefined } : current
+      );
+    },
+    [setApiKey, setLastPayload]
+  );
+
+  const handleSendMessage = React.useCallback(
+    async (message: string) => {
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage) {
+        appendLog('Cannot send empty message.', 'warning');
+        return;
+      }
+
+      if (mode === 'text' && responsePending) {
+        appendLog(
+          'Assistant is still responding. Wait for the current turn to finish before sending another prompt.',
+          'warning'
+        );
+        return;
+      }
+
+      if (!session) {
+        const payloadToUse: ConnectPayload = lastPayload ?? {
+          instructions: {
+            headline: 'Realtime Agent Assistant',
+            details:
+              'Respond in short, structured sentences. Surface notable insights before wrapping up.',
+          },
+          mode,
+          voice: mode === 'voice' ? 'alloy' : undefined,
+          apiKey: apiKey ? apiKey : undefined,
+        };
+
+        if (!payloadToUse.apiKey && apiKey) {
+          payloadToUse.apiKey = apiKey;
+        }
+
+        setLastPayload(payloadToUse);
+        appendLog('Bootstrapping new session before sending message.', 'info');
+
+        try {
+          const result = await mutation.mutateAsync(payloadToUse);
+          safeSendMessage(result.session, trimmedMessage);
+          return;
+        } catch (error) {
+          appendLog(
+            `Unable to create session: ${(error as Error).message}`,
+            'error'
+          );
+          return;
+        }
+      }
+
+      safeSendMessage(session, trimmedMessage);
+    },
+    [
+      apiKey,
+      appendLog,
+      lastPayload,
+      mode,
+      mutation,
+      responsePending,
+      safeSendMessage,
+      session,
+      setLastPayload,
+    ]
+  );
+
+  React.useEffect(() => {
+    if (!responsePending) {
+      if (responseTimeoutRef.current !== null) {
+        window.clearTimeout(responseTimeoutRef.current);
+        responseTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    responseTimeoutRef.current = window.setTimeout(() => {
+      appendLog(
+        'Response is taking longer than expected. Resetting session.',
+        'warning'
+      );
+      void handleResetSession(true);
+    }, 15000);
+
+    return () => {
+      if (responseTimeoutRef.current !== null) {
+        window.clearTimeout(responseTimeoutRef.current);
+        responseTimeoutRef.current = null;
+      }
+    };
+  }, [appendLog, handleResetSession, responsePending]);
 
   React.useEffect(
     () => () => {
       cleanupSessionListeners();
     },
-    [cleanupSessionListeners],
+    [cleanupSessionListeners]
   );
 
   return {
@@ -364,6 +553,10 @@ export const useRealtimeAgentConnection = () => {
     sendMessage: handleSendMessage,
     isPending: mutation.isPending,
     responsePending,
+    sessionId,
+    apiKey,
+    updateApiKey: handleUpdateApiKey,
+    resetSession: handleResetSession,
   };
 };
 

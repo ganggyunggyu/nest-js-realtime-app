@@ -1,15 +1,22 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import type { ConnectPayload } from '@/entities/session/session.types';
+import { SARADORENG_SYSTEM_PROMPT } from '../../../../entities/agent/roles/saradoreng';
 
 const endpoint = 'https://api.openai.com/v1/realtime/client_secrets';
-const realtimeModel = 'gpt-realtime-mini-2025-10-06';
+const realtimeModel = 'gpt-realtime-2025-08-28';
 const allowedVoices = new Set(['alloy', 'coral', 'marin']);
 
 const buildBody = (payload: ConnectPayload) => {
   const session: Record<string, unknown> = {
     type: 'realtime',
     model: realtimeModel,
-    instructions: `${payload.instructions.headline}\n${payload.instructions.details}`,
+    instructions: [
+      SARADORENG_SYSTEM_PROMPT,
+      payload.instructions.headline,
+      payload.instructions.details,
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
   };
 
   if (payload.mode === 'voice' && payload.voice) {
@@ -26,7 +33,9 @@ const buildBody = (payload: ConnectPayload) => {
 };
 
 export const POST = async (request: NextRequest) => {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const body = (await request.json()) as ConnectPayload;
+  const clientSuppliedKey = body.apiKey?.trim();
+  const apiKey = clientSuppliedKey ?? process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     return NextResponse.json(
@@ -35,7 +44,9 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
-  const body = (await request.json()) as ConnectPayload;
+  if (body.apiKey) {
+    delete body.apiKey;
+  }
 
   if (body.mode !== 'voice' && body.mode !== 'text') {
     return NextResponse.json(

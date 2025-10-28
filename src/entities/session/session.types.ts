@@ -9,4 +9,5 @@ export interface ConnectPayload {
   instructions: SessionInstructions;
   mode: RealtimeMode;
   voice?: string;
+  apiKey?: string;
 }
