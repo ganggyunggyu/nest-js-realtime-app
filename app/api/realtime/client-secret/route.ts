@@ -1,0 +1,90 @@
+import { NextResponse, type NextRequest } from 'next/server';
+import type { ConnectPayload } from '@/entities/session/session.types';
+
+const endpoint = 'https://api.openai.com/v1/realtime/client_secrets';
+const realtimeModel = 'gpt-realtime-mini-2025-10-06';
+const allowedVoices = new Set(['alloy', 'coral', 'marin']);
+
+const buildBody = (payload: ConnectPayload) => {
+  const session: Record<string, unknown> = {
+    type: 'realtime',
+    model: realtimeModel,
+    instructions: `${payload.instructions.headline}\n${payload.instructions.details}`,
+  };
+
+  if (payload.mode === 'voice' && payload.voice) {
+    session.audio = {
+      output: {
+        voice: payload.voice,
+      },
+    };
+  }
+
+  return {
+    session,
+  };
+};
+
+export const POST = async (request: NextRequest) => {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    return NextResponse.json(
+      { message: 'OPENAI_API_KEY missing' },
+      { status: 500 }
+    );
+  }
+
+  const body = (await request.json()) as ConnectPayload;
+
+  if (body.mode !== 'voice' && body.mode !== 'text') {
+    return NextResponse.json(
+      { message: 'Unsupported realtime mode' },
+      { status: 400 }
+    );
+  }
+
+  if (body.mode === 'voice') {
+    if (!body.voice) {
+      return NextResponse.json(
+        { message: 'Voice must be provided for voice mode' },
+        { status: 400 }
+      );
+    }
+
+    if (!allowedVoices.has(body.voice)) {
+      return NextResponse.json(
+        { message: 'Unsupported voice selection' },
+        { status: 400 }
+      );
+    }
+  }
+
+  if (!body.instructions.headline.trim() || !body.instructions.details.trim()) {
+    return NextResponse.json(
+      { message: 'Instructions cannot be empty' },
+      { status: 400 }
+    );
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildBody(body)),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    return NextResponse.json(
+      { message: 'Failed to create realtime client secret', detail: error },
+      { status: response.status }
+    );
+  }
+
+  const payloadResponse = (await response.json()) as { value: string };
+
+  return NextResponse.json(payloadResponse);
+};
