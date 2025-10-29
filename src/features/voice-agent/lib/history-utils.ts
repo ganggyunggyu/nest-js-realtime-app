@@ -6,8 +6,12 @@ const isAssistMessage = (
 ): item is RealtimeItem & { status?: string } =>
   item.type === 'message' && item.role === 'assistant';
 
-const extractTextFromItem = (item: RealtimeItem) =>
-  item.content
+const extractTextFromItem = (item: RealtimeItem): string => {
+  if (item.type !== 'message') {
+    return '';
+  }
+
+  return item.content
     .map((content) => {
       if (content.type === 'input_text' || content.type === 'output_text') {
         return content.text;
@@ -25,6 +29,7 @@ const extractTextFromItem = (item: RealtimeItem) =>
     .filter(Boolean)
     .join(' ')
     .trim();
+};
 
 export const mapRealtimeItemToMessage = (
   item: RealtimeItem,
