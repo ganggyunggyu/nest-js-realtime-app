@@ -34,6 +34,10 @@ const logStyles: Record<LogSeverity, string> = {
   error: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200",
 };
 
+const DEFAULT_HEADLINE = "Realtime Agent Assistant";
+const DEFAULT_DETAILS =
+  "Respond in short, structured sentences. Surface notable insights before wrapping up.";
+
 export const VoiceAgentConsole = () => {
   const {
     status,
@@ -50,10 +54,6 @@ export const VoiceAgentConsole = () => {
     resetSession,
   } = useRealtimeAgentConnection();
 
-  const [headline, setHeadline] = React.useState("Realtime Agent Assistant");
-  const [details, setDetails] = React.useState(
-    "Respond in short, structured sentences. Surface notable insights before wrapping up.",
-  );
   const [mode, setMode] = React.useState<RealtimeMode>("voice");
   const [voice, setVoice] = React.useState(voiceOptions[0]?.value ?? "alloy");
   const [chatDraft, setChatDraft] = React.useState("");
@@ -75,7 +75,7 @@ export const VoiceAgentConsole = () => {
   const handleApiKeyChange = React.useCallback(
     (value: string) => {
       setApiKeyDraft(value);
-      updateApiKey(value);
+      updateApiKey(value.trim());
     },
     [updateApiKey],
   );
@@ -88,12 +88,15 @@ export const VoiceAgentConsole = () => {
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       await connect({
-        instructions: { headline, details },
+        instructions: {
+          headline: DEFAULT_HEADLINE,
+          details: DEFAULT_DETAILS,
+        },
         mode,
         voice: mode === "voice" ? voice : undefined,
       });
     },
-    [connect, details, headline, mode, voice],
+    [connect, mode, voice],
   );
 
   const handleDisconnect = React.useCallback(() => {
@@ -227,51 +230,9 @@ export const VoiceAgentConsole = () => {
           onSubmit={handleConnect}
           className={cn(
             "grid grid-cols-1 gap-6 rounded-xl bg-zinc-50 p-6",
-            "dark:bg-zinc-800/40 lg:grid-cols-3",
+            "dark:bg-zinc-800/40",
           )}
         >
-          <section className={cn("col-span-2 flex flex-col gap-4")}>
-            <label
-              className={cn(
-                "flex flex-col gap-2",
-                "text-sm font-medium text-zinc-700 dark:text-zinc-200",
-              )}
-            >
-              Headline prompt
-              <input
-                value={headline}
-                onChange={(event) => setHeadline(event.target.value)}
-                className={cn(
-                  "w-full rounded-lg border border-zinc-200 bg-white px-4 py-3",
-                  "text-base text-zinc-900 outline-none transition",
-                  "focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10",
-                  "dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50",
-                  "dark:focus:border-zinc-200 dark:focus:ring-zinc-200/20",
-                )}
-                placeholder="Give the assistant a name or short identity line."
-              />
-            </label>
-            <label
-              className={cn(
-                "flex flex-col gap-2",
-                "text-sm font-medium text-zinc-700 dark:text-zinc-200",
-              )}
-            >
-              Behaviour guidelines
-              <textarea
-                value={details}
-                onChange={(event) => setDetails(event.target.value)}
-                className={cn(
-                  "h-40 w-full resize-none rounded-lg border border-zinc-200 bg-white px-4 py-3",
-                  "text-base text-zinc-900 outline-none transition",
-                  "focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10",
-                  "dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50",
-                  "dark:focus:border-zinc-200 dark:focus:ring-zinc-200/20",
-                )}
-                placeholder="Spell out tone, escalation rules, and guardrails."
-              />
-            </label>
-          </section>
           <section className={cn("flex flex-col gap-4")}>
             <div
               className={cn(
@@ -403,14 +364,15 @@ export const VoiceAgentConsole = () => {
                   )}
                 </div>
               </div>
-              <div className={cn("flex flex-wrap gap-2")}
+              <div
+                className={cn("flex flex-wrap gap-2")}
                 aria-live="polite"
               >
-                  <button
-                    type="submit"
-                    disabled={isPending || status === "connected"}
-                    className={cn(
-                      "rounded-lg bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition",
+                <button
+                  type="submit"
+                  disabled={isPending || status === "connected"}
+                  className={cn(
+                    "rounded-lg bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition",
                       "disabled:cursor-not-allowed disabled:bg-zinc-500",
                       "hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900",
                       "dark:hover:bg-zinc-200",
@@ -449,7 +411,6 @@ export const VoiceAgentConsole = () => {
                     Reset
                   </button>
                 </div>
-              </div>
             </div>
           </section>
         </form>
