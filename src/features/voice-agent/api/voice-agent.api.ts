@@ -2,7 +2,7 @@ import { RealtimeAgent, RealtimeSession } from '@openai/agents/realtime';
 import type { ConnectPayload } from '@/entities/session/session.types';
 import { SARADORENG_SYSTEM_PROMPT } from '../../../../entities/agent/roles/saradoreng';
 
-interface RealtimeConnectResult {
+export interface RealtimeConnectResult {
   agent: RealtimeAgent;
   session: RealtimeSession;
   clientSecret: string;

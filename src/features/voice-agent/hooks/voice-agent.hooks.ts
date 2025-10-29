@@ -2,10 +2,7 @@ import React from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useAtom } from 'jotai';
 import type { RealtimeItem, RealtimeSession } from '@openai/agents/realtime';
-import type {
-  ConnectPayload,
-  RealtimeMode,
-} from '@/entities/session/session.types';
+import type { ConnectPayload } from '@/entities/session/session.types';
 import {
   voiceAgentAgentAtom,
   voiceAgentConversationAtom,
@@ -21,7 +18,10 @@ import {
   type LogSeverity,
   type ConversationMessage,
 } from '@/features/voice-agent/model/voice-agent.atoms';
-import { createRealtimeSession } from '@/features/voice-agent/api/voice-agent.api';
+import {
+  createRealtimeSession,
+  type RealtimeConnectResult,
+} from '@/features/voice-agent/api/voice-agent.api';
 
 const MAX_LOG_LENGTH = 30;
 
@@ -65,7 +65,13 @@ const resolveMessageText = (item: RealtimeItem): ConversationMessage | null => {
     id: item.itemId,
     role: item.role,
     text: textSegments.join(' ').trim(),
-    status: item.status ?? 'completed',
+    status:
+      'status' in item &&
+      (item.status === 'in_progress' ||
+        item.status === 'completed' ||
+        item.status === 'incomplete')
+        ? item.status
+        : 'completed',
   };
 };
 
@@ -150,7 +156,7 @@ export const useRealtimeAgentConnection = () => {
     [setLogs]
   );
 
-  const mutation = useMutation({
+  const mutation = useMutation<RealtimeConnectResult, Error, ConnectPayload>({
     mutationFn: async (payload: ConnectPayload) => {
       setStatus('connecting');
       setConversation([]);
@@ -163,7 +169,10 @@ export const useRealtimeAgentConnection = () => {
 
       return createRealtimeSession(payload);
     },
-    onSuccess: ({ agent, session: newSession }, variables) => {
+    onSuccess: (
+      { agent, session: newSession }: RealtimeConnectResult,
+      variables: ConnectPayload
+    ) => {
       cleanupSessionListeners();
 
       assistantBufferRef.current.clear();
@@ -190,11 +199,13 @@ export const useRealtimeAgentConnection = () => {
 
       const handleTransportEvent = (event: {
         type: string;
-        [key: string]: any;
-      }) => {
+      } & Record<string, unknown>) => {
         if (
           event.type === 'session.created' &&
-          typeof event.session?.id === 'string'
+          typeof event.session === 'object' &&
+          event.session !== null &&
+          'id' in event.session &&
+          typeof event.session.id === 'string'
         ) {
           setSessionId(event.session.id);
         }
@@ -206,13 +217,13 @@ export const useRealtimeAgentConnection = () => {
         if (event.type === 'response.output_text.delta') {
           setResponsePending(true);
 
-          const itemId =
-            event.item_id ??
-            `${event.response_id ?? 'response'}:${event.output_index ?? 0}:${
-              event.content_index ?? 0
-            }`;
+          const itemId: string =
+            (event.item_id as string | undefined) ??
+            `${(event.response_id as string | undefined) ?? 'response'}:${
+              (event.output_index as number | undefined) ?? 0
+            }:${(event.content_index as number | undefined) ?? 0}`;
           const currentText = assistantBufferRef.current.get(itemId) ?? '';
-          const nextText = `${currentText}${event.delta ?? ''}`;
+          const nextText = `${currentText}${(event.delta as string | undefined) ?? ''}`;
           assistantBufferRef.current.set(itemId, nextText);
           upsertConversationMessage({
             id: itemId,
@@ -229,11 +240,11 @@ export const useRealtimeAgentConnection = () => {
           event.type === 'response.failed' ||
           event.type === 'response.cancelled'
         ) {
-          const itemId =
-            event.item_id ??
-            `${event.response_id ?? 'response'}:${event.output_index ?? 0}:${
-              event.content_index ?? 0
-            }`;
+          const itemId: string =
+            (event.item_id as string | undefined) ??
+            `${(event.response_id as string | undefined) ?? 'response'}:${
+              (event.output_index as number | undefined) ?? 0
+            }:${(event.content_index as number | undefined) ?? 0}`;
           const finalText = assistantBufferRef.current.get(itemId) ?? '';
 
           if (finalText.trim().length > 0) {
@@ -310,9 +321,9 @@ export const useRealtimeAgentConnection = () => {
       setResponsePending(false);
       setSessionId(null);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       setStatus('error');
-      appendLog(`Connection failed: ${(error as Error).message}`, 'error');
+      appendLog(`Connection failed: ${error.message}`, 'error');
       setResponsePending(false);
       setSessionId(null);
     },
@@ -466,20 +477,21 @@ export const useRealtimeAgentConnection = () => {
       }
 
       if (!session) {
-        const payloadToUse: ConnectPayload = lastPayload ?? {
-          instructions: {
-            headline: 'Realtime Agent Assistant',
-            details:
-              'Respond in short, structured sentences. Surface notable insights before wrapping up.',
-          },
-          mode,
-          voice: mode === 'voice' ? 'alloy' : undefined,
-          apiKey: apiKey ? apiKey : undefined,
-        };
-
-        if (!payloadToUse.apiKey && apiKey) {
-          payloadToUse.apiKey = apiKey;
-        }
+        const payloadToUse: ConnectPayload = lastPayload
+          ? {
+              ...lastPayload,
+              apiKey: lastPayload.apiKey ?? (apiKey || undefined),
+            }
+          : {
+              instructions: {
+                headline: 'Realtime Agent Assistant',
+                details:
+                  'Respond in short, structured sentences. Surface notable insights before wrapping up.',
+              },
+              mode,
+              voice: mode === 'voice' ? 'alloy' : undefined,
+              apiKey: apiKey ? apiKey : undefined,
+            };
 
         setLastPayload(payloadToUse);
         appendLog('Bootstrapping new session before sending message.', 'info');
