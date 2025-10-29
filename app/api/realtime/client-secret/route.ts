@@ -3,7 +3,7 @@ import type { ConnectPayload } from '@/entities/session/session.types';
 import { SARADORENG_SYSTEM_PROMPT } from '../../../../entities/agent/roles/saradoreng';
 
 const endpoint = 'https://api.openai.com/v1/realtime/client_secrets';
-const realtimeModel = 'gpt-realtime-2025-08-28';
+const realtimeModel = 'gpt-realtime-mini-2025-10-06';
 const allowedVoices = new Set(['alloy', 'coral', 'marin']);
 
 const buildBody = (payload: ConnectPayload) => {
