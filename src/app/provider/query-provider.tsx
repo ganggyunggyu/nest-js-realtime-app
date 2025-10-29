@@ -27,15 +27,14 @@ export const QueryProvider = ({
   children,
   queryClientConfig,
 }: QueryProviderProps) => {
-  const queryClientRef = React.useRef<QueryClient>();
-
-  if (!queryClientRef.current) {
-    queryClientRef.current = createQueryClient(queryClientConfig);
-  }
+  const queryClient = React.useMemo(
+    () => createQueryClient(queryClientConfig),
+    [queryClientConfig],
+  );
 
   return (
     <React.Fragment>
-      <QueryClientProvider client={queryClientRef.current}>
+      <QueryClientProvider client={queryClient}>
         {children}
       </QueryClientProvider>
     </React.Fragment>
