@@ -4,6 +4,10 @@ import { useAtom } from 'jotai';
 import type { RealtimeItem, RealtimeSession } from '@openai/agents/realtime';
 import type { ConnectPayload } from '@/entities/session/session.types';
 import {
+  DEFAULT_SESSION_DETAILS,
+  DEFAULT_SESSION_HEADLINE,
+} from '@/entities/session/session.constants';
+import {
   voiceAgentAgentAtom,
   voiceAgentConversationAtom,
   voiceAgentModeAtom,
@@ -18,6 +22,7 @@ import {
   type LogSeverity,
   type ConversationMessage,
 } from '@/features/voice-agent/model/voice-agent.atoms';
+import { mapRealtimeItemToMessage } from '@/features/voice-agent/lib/history-utils';
 import {
   createRealtimeSession,
   type RealtimeConnectResult,
@@ -38,42 +43,6 @@ const createLogEntry = (
   message,
   severity,
 });
-
-const resolveMessageText = (item: RealtimeItem): ConversationMessage | null => {
-  if (item.type !== 'message') {
-    return null;
-  }
-
-  const textSegments = item.content
-    .map((content) => {
-      if (content.type === 'input_text' || content.type === 'output_text') {
-        return content.text;
-      }
-
-      if (
-        (content.type === 'input_audio' || content.type === 'output_audio') &&
-        content.transcript
-      ) {
-        return content.transcript;
-      }
-
-      return null;
-    })
-    .filter(Boolean) as string[];
-
-  return {
-    id: item.itemId,
-    role: item.role,
-    text: textSegments.join(' ').trim(),
-    status:
-      'status' in item &&
-      (item.status === 'in_progress' ||
-        item.status === 'completed' ||
-        item.status === 'incomplete')
-        ? item.status
-        : 'completed',
-  };
-};
 
 export const useRealtimeAgentConnection = () => {
   const [session, setSession] = useAtom(voiceAgentSessionAtom);
@@ -183,7 +152,7 @@ export const useRealtimeAgentConnection = () => {
 
       const handleHistoryUpdated = (history: RealtimeItem[]) => {
         history.forEach((item) => {
-          const message = resolveMessageText(item);
+          const message = mapRealtimeItemToMessage(item);
           if (message) {
             upsertConversationMessage(message);
           }
@@ -191,7 +160,7 @@ export const useRealtimeAgentConnection = () => {
       };
 
       const handleHistoryAdded = (item: RealtimeItem) => {
-        const message = resolveMessageText(item);
+        const message = mapRealtimeItemToMessage(item);
         if (message) {
           upsertConversationMessage(message);
         }
@@ -313,7 +282,7 @@ export const useRealtimeAgentConnection = () => {
       setSession(newSession);
       appendLog('Realtime session connected.', 'success');
       newSession.history.forEach((item) => {
-        const message = resolveMessageText(item);
+        const message = mapRealtimeItemToMessage(item);
         if (message) {
           upsertConversationMessage(message);
         }
@@ -484,9 +453,8 @@ export const useRealtimeAgentConnection = () => {
             }
           : {
               instructions: {
-                headline: 'Realtime Agent Assistant',
-                details:
-                  'Respond in short, structured sentences. Surface notable insights before wrapping up.',
+                headline: DEFAULT_SESSION_HEADLINE,
+                details: DEFAULT_SESSION_DETAILS,
               },
               mode,
               voice: mode === 'voice' ? 'alloy' : undefined,

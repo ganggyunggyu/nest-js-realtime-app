@@ -4,25 +4,20 @@ import React from "react";
 import { cn } from "@/shared/lib/cn";
 import { useRealtimeAgentConnection } from "@/features/voice-agent/hooks/voice-agent.hooks";
 import type { RealtimeMode } from "@/entities/session/session.types";
+import {
+  DEFAULT_SESSION_DETAILS,
+  DEFAULT_SESSION_HEADLINE,
+} from "@/entities/session/session.constants";
 import type { LogSeverity } from "@/features/voice-agent/model/voice-agent.atoms";
+import { ApiKeyPanel } from "@/features/voice-agent/ui/components/api-key-panel";
+import { ConversationPanel } from "@/features/voice-agent/ui/components/conversation-panel";
+import { EventLogPanel } from "@/features/voice-agent/ui/components/event-log-panel";
+import { SessionStatusPanel } from "@/features/voice-agent/ui/components/session-status-panel";
 
 const voiceOptions = [
   { value: "alloy", label: "Alloy" },
   { value: "coral", label: "Coral" },
   { value: "marin", label: "Marin" },
-];
-
-const modeOptions: Array<{ value: RealtimeMode; label: string; hint: string }> = [
-  {
-    value: "voice",
-    label: "Voice (WebRTC)",
-    hint: "Bi-directional audio with microphone capture and TTS reply.",
-  },
-  {
-    value: "text",
-    label: "Chat (WebSocket)",
-    hint: "Low-latency text runs without touching the microphone.",
-  },
 ];
 
 const logStyles: Record<LogSeverity, string> = {
@@ -34,11 +29,12 @@ const logStyles: Record<LogSeverity, string> = {
   error: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200",
 };
 
-const DEFAULT_HEADLINE = "Realtime Agent Assistant";
-const DEFAULT_DETAILS =
-  "Respond in short, structured sentences. Surface notable insights before wrapping up.";
+type VoiceAgentConsoleProps = {
+  defaultMode?: RealtimeMode;
+  forcedMode?: RealtimeMode;
+};
 
-export const VoiceAgentConsole = () => {
+export const VoiceAgentConsole: React.FC<VoiceAgentConsoleProps> = ({ defaultMode = "voice", forcedMode }) => {
   const {
     status,
     logs,
@@ -54,13 +50,13 @@ export const VoiceAgentConsole = () => {
     resetSession,
   } = useRealtimeAgentConnection();
 
-  const [mode, setMode] = React.useState<RealtimeMode>("voice");
+  const [mode, setMode] = React.useState<RealtimeMode>(forcedMode || defaultMode);
   const [voice, setVoice] = React.useState(voiceOptions[0]?.value ?? "alloy");
   const [chatDraft, setChatDraft] = React.useState("");
-  const conversationContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const logContainerRef = React.useRef<HTMLDivElement | null>(null);
   const [apiKeyDraft, setApiKeyDraft] = React.useState(apiKey);
   const [apiKeyVisible, setApiKeyVisible] = React.useState(false);
+  const conversationContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const logContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const canSendChat =
     chatDraft.trim().length > 0 &&
@@ -80,28 +76,32 @@ export const VoiceAgentConsole = () => {
     [updateApiKey],
   );
 
-  const handleManualReset = React.useCallback(() => {
-    void resetSession(true);
-  }, [resetSession]);
+  const triggerConnect = React.useCallback(() => {
+    void connect({
+      instructions: {
+        headline: DEFAULT_SESSION_HEADLINE,
+        details: DEFAULT_SESSION_DETAILS,
+      },
+      mode,
+      voice: mode === "voice" ? voice : undefined,
+    });
+  }, [connect, mode, voice]);
 
   const handleConnect = React.useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
+    (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      await connect({
-        instructions: {
-          headline: DEFAULT_HEADLINE,
-          details: DEFAULT_DETAILS,
-        },
-        mode,
-        voice: mode === "voice" ? voice : undefined,
-      });
+      triggerConnect();
     },
-    [connect, mode, voice],
+    [triggerConnect],
   );
 
   const handleDisconnect = React.useCallback(() => {
     disconnect();
   }, [disconnect]);
+
+  const handleManualReset = React.useCallback(() => {
+    void resetSession(true);
+  }, [resetSession]);
 
   const handleSendChat = React.useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -175,245 +175,48 @@ export const VoiceAgentConsole = () => {
           </p>
         </header>
 
-        <div
-          className={cn(
-            "flex w-full flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-6",
-            "dark:border-zinc-800 dark:bg-zinc-900",
-          )}
-        >
-          <div className={cn("flex items-center justify-between")}
-            aria-live="polite"
-          >
+        <ApiKeyPanel
+          value={apiKeyDraft}
+          visible={apiKeyVisible}
+          onToggleVisibility={() => setApiKeyVisible((prev) => !prev)}
+          onChange={handleApiKeyChange}
+        />
+
+        <div className={cn("flex items-center justify-between px-4")}>
+          <div className={cn("flex items-center gap-2")}>
+            <div
+              className={cn(
+                "h-3 w-3 rounded-full",
+                mode === "voice" ? "bg-emerald-500" : "bg-blue-500"
+              )}
+            />
             <span
               className={cn(
-                "text-sm font-semibold text-zinc-700",
-                "dark:text-zinc-200",
+                "text-sm font-semibold uppercase tracking-wide",
+                mode === "voice" ? "text-emerald-600" : "text-blue-600",
+                "dark:text-emerald-400 dark:text-blue-400"
               )}
             >
-              OpenAI API Key
+              {mode === "voice" ? "Voice Mode" : "Text Mode"}
+              {forcedMode && " (Locked)"}
             </span>
-            <button
-              type="button"
-              onClick={() => setApiKeyVisible((prev) => !prev)}
-              className={cn(
-                "text-xs font-medium text-zinc-600 underline transition hover:text-zinc-900",
-                "dark:text-zinc-400 dark:hover:text-zinc-200",
-              )}
-            >
-              {apiKeyVisible ? "Hide" : "Show"}
-            </button>
           </div>
-          <input
-            value={apiKeyDraft}
-            onChange={(event) => handleApiKeyChange(event.target.value)}
-            type={apiKeyVisible ? "text" : "password"}
-            placeholder="Optional client key (starts with sk-...)"
-            className={cn(
-              "w-full rounded-lg border border-zinc-200 bg-white px-4 py-3",
-              "text-sm text-zinc-900 outline-none transition",
-              "focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10",
-              "dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50",
-              "dark:focus:border-zinc-200 dark:focus:ring-zinc-200/20",
-            )}
-          />
-          <span
-            className={cn(
-              "text-xs text-zinc-500",
-              "dark:text-zinc-400",
-            )}
-          >
-            Stored locally for this browser. Leave empty to fall back to the server key.
-          </span>
         </div>
-
-        <form
-          onSubmit={handleConnect}
-          className={cn(
-            "grid grid-cols-1 gap-6 rounded-xl bg-zinc-50 p-6",
-            "dark:bg-zinc-800/40",
-          )}
-        >
-          <section className={cn("flex flex-col gap-4")}>
-            <div
-              className={cn(
-                "flex flex-col gap-3 rounded-lg border border-zinc-200 p-4",
-                "dark:border-zinc-700",
-              )}
-            >
-              <span
-                className={cn(
-                  "text-sm font-semibold text-zinc-700 dark:text-zinc-200",
-                )}
-              >
-                Transport mode
-              </span>
-              <div
-                className={cn(
-                  "grid grid-cols-1 gap-2 rounded-md bg-white p-2",
-                  "dark:bg-zinc-900",
-                )}
-              >
-                {modeOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setMode(option.value)}
-                    className={cn(
-                      "flex flex-col rounded-md border px-3 py-2 text-left transition",
-                      "border-transparent hover:border-zinc-300 hover:bg-zinc-100",
-                      "dark:hover:border-zinc-700 dark:hover:bg-zinc-800",
-                      mode === option.value &&
-                        "border-zinc-900 bg-zinc-900 text-zinc-50 shadow-sm dark:border-zinc-200 dark:bg-zinc-100 dark:text-zinc-900",
-                    )}
-                    disabled={status === "connecting"}
-                  >
-                    <span className={cn("text-sm font-semibold leading-none")}>
-                      {option.label}
-                    </span>
-                    <span
-                      className={cn(
-                        "mt-1 text-xs text-zinc-600",
-                        "dark:text-zinc-400",
-                      )}
-                    >
-                      {option.hint}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label
-              className={cn(
-                "flex flex-col gap-2 rounded-lg border border-zinc-200 p-4",
-                "text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-200",
-              )}
-            >
-              Output voice
-              <select
-                value={voice}
-                onChange={(event) => setVoice(event.target.value)}
-                className={cn(
-                  "w-full rounded-lg border border-zinc-200 bg-white px-4 py-3",
-                  "text-base text-zinc-900 outline-none transition",
-                  "focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10",
-                  "dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50",
-                  "dark:focus:border-zinc-200 dark:focus:ring-zinc-200/20",
-                )}
-                disabled={mode !== "voice" || status === "connecting"}
-              >
-                {voiceOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div
-              className={cn(
-                "flex flex-col gap-4 rounded-lg border border-dashed border-zinc-300 p-4",
-                "dark:border-zinc-700",
-              )}
-            >
-              <div className={cn("flex items-center justify-between")}>
-                <div className={cn("flex flex-col gap-1")}>
-                  <span
-                    className={cn(
-                      "text-sm font-semibold text-zinc-700",
-                      "dark:text-zinc-200",
-                    )}
-                  >
-                    Session status
-                  </span>
-                  <span
-                    className={cn(
-                      "text-lg font-medium capitalize",
-                      status === "connected" && "text-emerald-500",
-                      status === "connecting" && "text-amber-500",
-                      status === "error" && "text-rose-500",
-                      status === "idle" && "text-zinc-500",
-                    )}
-                  >
-                    {status}
-                  </span>
-                </div>
-                <div
-                  className={cn("flex flex-col items-end gap-1")}
-                  aria-live="polite"
-                >
-                  {sessionId && (
-                    <span
-                      className={cn(
-                        "text-xs font-mono text-zinc-500",
-                        "dark:text-zinc-400",
-                      )}
-                    >
-                      Session: {sessionId}
-                    </span>
-                  )}
-                  {mode === "text" && responsePending && (
-                    <span
-                      className={cn(
-                        "text-xs font-medium uppercase tracking-wide text-amber-500",
-                        "dark:text-amber-300",
-                      )}
-                    >
-                      Responding…
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div
-                className={cn("flex flex-wrap gap-2")}
-                aria-live="polite"
-              >
-                <button
-                  type="submit"
-                  disabled={isPending || status === "connected"}
-                  className={cn(
-                    "rounded-lg bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition",
-                      "disabled:cursor-not-allowed disabled:bg-zinc-500",
-                      "hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900",
-                      "dark:hover:bg-zinc-200",
-                    )}
-                  >
-                    {status === "connected" ? "Connected" : "Connect"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDisconnect}
-                    disabled={status !== "connected"}
-                    className={cn(
-                      "rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-900 transition",
-                      "hover:border-zinc-900 hover:text-zinc-950",
-                      "disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400",
-                      "dark:border-zinc-700 dark:text-zinc-100",
-                      "dark:hover:border-zinc-200 dark:hover:text-zinc-50",
-                      "dark:disabled:border-zinc-700 dark:disabled:text-zinc-500",
-                    )}
-                  >
-                    Disconnect
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleManualReset}
-                    disabled={isPending}
-                    className={cn(
-                      "rounded-lg border border-amber-400 px-4 py-2 text-sm font-semibold text-amber-700 transition",
-                      "hover:border-amber-500 hover:text-amber-800",
-                      "disabled:cursor-not-allowed disabled:border-amber-200 disabled:text-amber-300",
-                      "dark:border-amber-500 dark:text-amber-300",
-                      "dark:hover:border-amber-400 dark:hover:text-amber-200",
-                      "dark:disabled:border-amber-200 dark:disabled:text-amber-200",
-                    )}
-                  >
-                    Reset
-                  </button>
-                </div>
-            </div>
-          </section>
-        </form>
+        <SessionStatusPanel
+          status={status}
+          sessionId={sessionId}
+          responsePending={responsePending}
+          mode={mode}
+          onModeChange={(value) => !forcedMode && setMode(value)}
+          voice={voice}
+          voiceOptions={voiceOptions}
+          onVoiceChange={(value) => setVoice(value)}
+          isPending={isPending}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
+          onReset={handleManualReset}
+          disabled={!!forcedMode}
+        />
 
         {mode === "text" && (
           <form
@@ -459,170 +262,15 @@ export const VoiceAgentConsole = () => {
             "grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]",
           )}
         >
-          <div
-            className={cn(
-              "flex h-72 flex-col gap-3 overflow-hidden rounded-xl border border-zinc-200 bg-white",
-              "dark:border-zinc-700 dark:bg-zinc-900",
-            )}
-          >
-            <div
-              className={cn(
-                "flex items-center justify-between border-b border-zinc-100 px-4 py-3",
-                "dark:border-zinc-800",
-              )}
-            >
-              <span
-                className={cn(
-                  "text-sm font-semibold uppercase tracking-wide text-zinc-600",
-                  "dark:text-zinc-300",
-                )}
-              >
-                Conversation
-              </span>
-              <span
-                className={cn(
-                  "text-xs font-medium text-zinc-500 dark:text-zinc-400",
-                )}
-              >
-                {conversation.length} items
-              </span>
-            </div>
-            <div
-              ref={conversationContainerRef}
-              className={cn(
-                "flex-1 overflow-y-auto px-4 py-3",
-                "space-y-3 text-sm",
-              )}
-            >
-              {conversation.length === 0 ? (
-                <div
-                  className={cn(
-                    "rounded-md border border-dashed border-zinc-300 p-4 text-center text-zinc-500",
-                    "dark:border-zinc-700 dark:text-zinc-400",
-                  )}
-                >
-                  No conversation captured yet.
-                </div>
-              ) : (
-                conversation.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      "flex flex-col gap-1 rounded-lg px-4 py-3 shadow-sm transition",
-                      message.role === "user"
-                        ? "self-end bg-zinc-950 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
-                        : "self-start bg-zinc-50 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100",
-                    )}
-                  >
-                    <div className={cn("flex items-center justify-between")}>
-                      <span
-                        className={cn(
-                          "text-[0.65rem] font-semibold uppercase tracking-wide opacity-70",
-                        )}
-                      >
-                        {message.role}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[0.65rem] font-semibold uppercase tracking-wide",
-                          message.status === "completed" && "text-emerald-400",
-                          message.status === "in_progress" && "text-amber-400",
-                          message.status === "incomplete" && "text-rose-400",
-                        )}
-                      >
-                        {message.status}
-                      </span>
-                    </div>
-                    <span>{message.text}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div
-            className={cn(
-              "flex h-72 flex-col gap-3 overflow-hidden rounded-xl border border-zinc-200 bg-white",
-              "dark:border-zinc-700 dark:bg-zinc-900",
-            )}
-          >
-            <div
-              className={cn(
-                "flex items-center justify-between border-b border-zinc-100 px-4 py-3",
-                "dark:border-zinc-800",
-              )}
-            >
-              <span
-                className={cn(
-                  "text-sm font-semibold uppercase tracking-wide text-zinc-600",
-                  "dark:text-zinc-300",
-                )}
-              >
-                Event log
-              </span>
-              <span
-                className={cn(
-                  "text-xs font-medium text-zinc-500 dark:text-zinc-400",
-                )}
-              >
-                {logs.length} entries
-              </span>
-            </div>
-            <div
-              ref={logContainerRef}
-              className={cn(
-                "flex-1 overflow-y-auto px-4 py-3",
-                "space-y-3 text-sm",
-              )}
-            >
-              {logs.length === 0 ? (
-                <div
-                  className={cn(
-                    "rounded-md border border-dashed border-zinc-300 p-4 text-center text-zinc-500",
-                    "dark:border-zinc-700 dark:text-zinc-400",
-                  )}
-                >
-                  No events captured yet.
-                </div>
-              ) : (
-                logs.map((log) => (
-                  <div
-                    key={log.id}
-                    className={cn(
-                      "flex flex-col gap-2 rounded-lg px-4 py-3 shadow-sm transition",
-                      logStyles[log.severity],
-                    )}
-                  >
-                    <div className={cn("flex items-center justify-between")}>
-                      <span
-                        className={cn(
-                          "text-[0.65rem] font-semibold uppercase tracking-wide opacity-70",
-                        )}
-                      >
-                        {log.severity}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[0.65rem] font-mono text-zinc-500 opacity-80",
-                          "dark:text-zinc-400",
-                        )}
-                      >
-                        {log.id.split("-")[0]}
-                      </span>
-                    </div>
-                    <pre
-                      className={cn(
-                        "whitespace-pre-wrap break-words text-sm leading-relaxed",
-                        "font-mono text-zinc-800 dark:text-zinc-200",
-                      )}
-                    >
-                      {log.message}
-                    </pre>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          <ConversationPanel
+            messages={conversation}
+            containerRef={conversationContainerRef}
+          />
+          <EventLogPanel
+            logs={logs}
+            containerRef={logContainerRef}
+            logStyles={logStyles}
+          />
         </section>
       </div>
     </React.Fragment>
