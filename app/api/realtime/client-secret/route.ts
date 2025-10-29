@@ -24,6 +24,15 @@ const buildBody = (payload: ConnectPayload) => {
       output: {
         voice: payload.voice,
       },
+      input: {
+        turn_detection: {
+          type: 'server_vad',
+          create_response: false, // ★ 자동 응답 시작 금지 (핵심)
+          interrupt_response: false, // 중도 인터럽트 금지
+          threshold: 0.5, // 필요 시 조정
+          idle_timeout_ms: 5000, // 출력 후 여유 대기
+        },
+      },
     };
   }
 
