@@ -1,13 +1,20 @@
 declare module "clsx" {
-  export type ClassValue = string | number | null | boolean | undefined | ClassDictionary | ClassArray;
+  export type ClassValue =
+    | string
+    | number
+    | null
+    | boolean
+    | undefined
+    | ClassDictionary
+    | ClassArray;
 
-  export interface ClassDictionary {
-    [id: string]: any;
-  }
+  export type ClassDictionary = Record<
+    string,
+    string | number | boolean | null | undefined
+  >;
 
-  export interface ClassArray extends Array<ClassValue> {}
+  export type ClassArray = Array<ClassValue>;
 
   export default function clsx(...inputs: ClassValue[]): string;
   export { clsx };
 }
-

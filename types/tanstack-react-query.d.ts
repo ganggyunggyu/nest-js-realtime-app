@@ -2,8 +2,8 @@ declare module "@tanstack/react-query" {
   import type React from "react";
 
   export interface QueryClientConfig {
-    defaultOptions?: any;
-    logger?: any;
+    defaultOptions?: Record<string, unknown>;
+    logger?: Record<string, unknown>;
   }
 
   export class QueryClient {
@@ -24,6 +24,5 @@ declare module "@tanstack/react-query" {
     context?: TContext;
   }
 
-  export function useMutation<TData = unknown, TError = unknown, TVariables = void, TContext = unknown>(options: any): UseMutationResult<TData, TError, TVariables, TContext>;
+  export function useMutation<TData = unknown, TError = unknown, TVariables = void, TContext = unknown>(options: Record<string, unknown>): UseMutationResult<TData, TError, TVariables, TContext>;
 }
-
