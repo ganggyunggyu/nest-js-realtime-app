@@ -50,27 +50,32 @@ const postClientSecret = async (payload: ConnectPayload) => {
 };
 
 let micTrack: MediaStreamTrack | null = null;
+let isMicMutedByAI = false;
+
 const initMicTrack = async (mode: string) => {
   if (mode !== 'voice') return;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     micTrack = stream.getAudioTracks()[0];
+    isMicMutedByAI = false;
     console.log('Mic track initialized!');
   } catch (err) {
     console.warn('Mic access denied:', err);
   }
 };
 
-const muteMic = () => {
-  if (micTrack) {
+const muteMicOnce = () => {
+  if (!isMicMutedByAI && micTrack) {
     micTrack.enabled = false;
+    isMicMutedByAI = true;
     console.log('Mic muted! (AI talking)');
   }
 };
 
-const unmuteMic = () => {
-  if (micTrack) {
+const unmuteMicOnce = () => {
+  if (isMicMutedByAI && micTrack) {
     micTrack.enabled = true;
+    isMicMutedByAI = false;
     console.log('Mic unmuted! (Your turn)');
   }
 };
@@ -108,11 +113,15 @@ export const createRealtimeSession = async (
   });
 
   if (payload.mode === 'voice') {
-    (session as any).on('response.audio.delta', (_event: any) => muteMic());
+    (session as any).on('response.created', (_event: any) => muteMicOnce());
 
-    (session as any).on('response.done', (_event: any) => unmuteMic());
+    (session as any).on('response.output_audio.delta', (_event: any) =>
+      muteMicOnce()
+    );
 
-    (session as any).on('response.cancelled', (_event: any) => unmuteMic());
+    (session as any).on('response.done', (_event: any) => unmuteMicOnce());
+
+    (session as any).on('response.cancelled', (_event: any) => unmuteMicOnce());
   }
 
   return {
@@ -122,8 +131,8 @@ export const createRealtimeSession = async (
     micHelpers:
       payload.mode === 'voice'
         ? {
-            mute: muteMic,
-            unmute: unmuteMic,
+            mute: muteMicOnce,
+            unmute: unmuteMicOnce,
             isMuted: isMicMuted,
           }
         : undefined,
